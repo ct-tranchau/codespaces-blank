@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Google Sheet KPI Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --bg: #f6f7fb;
+      --card: #ffffff;
+      --text: #172033;
+      --muted: #697386;
+      --border: #e5e7eb;
+      --accent: #2563eb;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    header {
+      padding: 28px 6vw 12px;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: clamp(28px, 4vw, 42px);
+      letter-spacing: -0.04em;
+    }
+    .subtitle {
+      color: var(--muted);
+      margin: 0;
+      line-height: 1.5;
+    }
+    main {
+      padding: 18px 6vw 48px;
+      display: grid;
+      gap: 22px;
+    }
+    .notice {
+      background: #fff7ed;
+      border: 1px solid #fed7aa;
+      color: #7c2d12;
+      padding: 12px 14px;
+      border-radius: 16px;
+      display: none;
+    }
+    .controls, .kpis, .charts {
+      display: grid;
+      gap: 16px;
+    }
+    .controls {
+      grid-template-columns: repeat(3, minmax(180px, 1fr));
+      align-items: end;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06);
+      padding: 18px;
+    }
+    label {
+      display: block;
+      color: var(--muted);
+      font-size: 13px;
+      margin-bottom: 8px;
+      font-weight: 650;
+    }
+    select, button {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 11px 12px;
+      font: inherit;
+      background: white;
+      color: var(--text);
+    }
+    button {
+      background: var(--accent);
+      color: white;
+      border: 0;
+      cursor: pointer;
+      font-weight: 700;
+    }
+    .kpis {
+      grid-template-columns: repeat(4, minmax(160px, 1fr));
+    }
+    .kpi-title {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+    .kpi-value {
+      font-size: clamp(24px, 3vw, 34px);
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      overflow-wrap: anywhere;
+    }
+    .charts {
+      grid-template-columns: repeat(2, minmax(280px, 1fr));
+    }
+    .chart-card {
+      min-height: 360px;
+    }
+    .chart-card.full {
+      grid-column: 1 / -1;
+    }
+    .chart-title {
+      margin: 0 0 12px;
+      font-size: 18px;
+      letter-spacing: -0.02em;
+    }
+    canvas {
+      width: 100% !important;
+      height: 290px !important;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+    th, td {
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      padding: 10px 8px;
+      white-space: nowrap;
+    }
+    th {
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .table-wrap {
+      overflow-x: auto;
+      max-height: 420px;
+    }
+    @media (max-width: 920px) {
+      .controls, .kpis, .charts {
+        grid-template-columns: 1fr;
+      }
+      .chart-card.full {
+        grid-column: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Google Sheet Dashboard</h1>
+    <p class="subtitle">Live KPIs and charts powered by your Google Sheet.</p>
+  </header>
+
+  <main>
+    <div id="notice" class="notice"></div>
+
+    <section class="controls">
+      <div class="card">
+        <label for="categorySelect">Category / label column</label>
+        <select id="categorySelect"></select>
+      </div>
+      <div class="card">
+        <label for="numericSelect">Numeric KPI column</label>
+        <select id="numericSelect"></select>
+      </div>
+      <div class="card">
+        <label for="dateSelect">Date / trend column</label>
+        <select id="dateSelect"></select>
+      </div>
+      <div class="card">
+        <button id="refreshBtn">Refresh dashboard</button>
+      </div>
+    </section>
+
+    <section class="kpis">
+      <div class="card"><div class="kpi-title">Rows</div><div id="kpiRows" class="kpi-value">—</div></div>
+      <div class="card"><div class="kpi-title">Total</div><div id="kpiTotal" class="kpi-value">—</div></div>
+      <div class="card"><div class="kpi-title">Average</div><div id="kpiAvg" class="kpi-value">—</div></div>
+      <div class="card"><div class="kpi-title">Categories</div><div id="kpiCategories" class="kpi-value">—</div></div>
+    </section>
+
+    <section class="charts">
+      <div class="card chart-card">
+        <h2 class="chart-title">Bar chart: total by category</h2>
+        <canvas id="barChart"></canvas>
+      </div>
+      <div class="card chart-card">
+        <h2 class="chart-title">Pie chart: rows by category</h2>
+        <canvas id="pieChart"></canvas>
+      </div>
+      <div class="card chart-card full">
+        <h2 class="chart-title">Line chart: trend over time</h2>
+        <canvas id="lineChart"></canvas>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2 class="chart-title">Preview data</h2>
+      <div id="tableWrap" class="table-wrap"></div>
+    </section>
+  </main>
+
+  <script>
+    const SHEET_ID = "1HxaSXYFLf-QZFSDXKCpLzMMydAZ0mENMe75MoW1Lqis";
+    const GID = "0";
+    const SHEET_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&gid=${GID}`;
+
+    let rows = [];
+    let columns = [];
+    let charts = {};
+
+    const $ = id => document.getElementById(id);
+
+    function showNotice(message) {
+      const el = $("notice");
+      el.textContent = message;
+      el.style.display = message ? "block" : "none";
+    }
+
+    function parseGoogleVisualization(text) {
+      const json = JSON.parse(text.substring(text.indexOf("{"), text.lastIndexOf("}") + 1));
+      const cols = json.table.cols.map((col, i) => col.label || `Column ${i + 1}`);
+      const data = json.table.rows.map(row => {
+        const obj = {};
+        cols.forEach((col, i) => {
+          const cell = row.c[i];
+          obj[col] = cell ? (cell.f ?? cell.v ?? "") : "";
+        });
+        return obj;
+      });
+      return { cols, data };
+    }
+
+    function toNumber(value) {
+      if (typeof value === "number") return value;
+      if (value === null || value === undefined) return NaN;
+      const cleaned = String(value).replace(/[$,%\s,]/g, "");
+      return cleaned === "" ? NaN : Number(cleaned);
+    }
+
+    function toDate(value) {
+      if (value instanceof Date) return value;
+      const parsed = new Date(value);
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+
+    function isNumericColumn(col) {
+      return rows.some(row => !Number.isNaN(toNumber(row[col])));
+    }
+
+    function isDateColumn(col) {
+      return rows.some(row => toDate(row[col]));
+    }
+
+    function populateSelects() {
+      const categoryCols = columns.filter(col => !isNumericColumn(col)) || columns;
+      const numericCols = columns.filter(isNumericColumn);
+      const dateCols = columns.filter(isDateColumn);
+
+      fillSelect($("categorySelect"), categoryCols.length ? categoryCols : columns);
+      fillSelect($("numericSelect"), numericCols.length ? numericCols : columns);
+      fillSelect($("dateSelect"), dateCols.length ? dateCols : columns);
+
+      if (numericCols.length === 0) {
+        showNotice("No clearly numeric columns were detected. Charts will use row counts until you choose a numeric-like column.");
+      } else {
+        showNotice("");
+      }
+    }
+
+    function fillSelect(select, values) {
+      select.innerHTML = "";
+      values.forEach(value => {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = value;
+        select.appendChild(option);
+      });
+    }
+
+    function groupByCategory(categoryCol, numericCol) {
+      const map = new Map();
+      rows.forEach(row => {
+        const key = String(row[categoryCol] || "Blank").trim() || "Blank";
+        const value = toNumber(row[numericCol]);
+        const current = map.get(key) || { total: 0, count: 0 };
+        current.total += Number.isNaN(value) ? 0 : value;
+        current.count += 1;
+        map.set(key, current);
+      });
+      return [...map.entries()]
+        .map(([label, values]) => ({ label, ...values }))
+        .sort((a, b) => b.total - a.total)
+        .slice(0, 12);
+    }
+
+    function trendByDate(dateCol, numericCol) {
+      const map = new Map();
+      rows.forEach(row => {
+        const date = toDate(row[dateCol]);
+        if (!date) return;
+        const key = date.toISOString().slice(0, 10);
+        const value = toNumber(row[numericCol]);
+        map.set(key, (map.get(key) || 0) + (Number.isNaN(value) ? 0 : value));
+      });
+      return [...map.entries()]
+        .map(([date, total]) => ({ date, total }))
+        .sort((a, b) => a.date.localeCompare(b.date));
+    }
+
+    function formatNumber(value) {
+      if (!Number.isFinite(value)) return "—";
+      return new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value);
+    }
+
+    function destroyChart(id) {
+      if (charts[id]) charts[id].destroy();
+    }
+
+    function renderDashboard() {
+      const categoryCol = $("categorySelect").value;
+      const numericCol = $("numericSelect").value;
+      const dateCol = $("dateSelect").value;
+
+      const values = rows.map(row => toNumber(row[numericCol])).filter(Number.isFinite);
+      const total = values.reduce((sum, value) => sum + value, 0);
+      const avg = values.length ? total / values.length : NaN;
+      const grouped = groupByCategory(categoryCol, numericCol);
+      const trend = trendByDate(dateCol, numericCol);
+
+      $("kpiRows").textContent = formatNumber(rows.length);
+      $("kpiTotal").textContent = formatNumber(total);
+      $("kpiAvg").textContent = formatNumber(avg);
+      $("kpiCategories").textContent = formatNumber(new Set(rows.map(row => row[categoryCol] || "Blank")).size);
+
+      destroyChart("bar");
+      charts.bar = new Chart($("barChart"), {
+        type: "bar",
+        data: {
+          labels: grouped.map(item => item.label),
+          datasets: [{ label: `Total ${numericCol}`, data: grouped.map(item => item.total) }]
+        },
+        options: { responsive: true, maintainAspectRatio: false }
+      });
+
+      destroyChart("pie");
+      charts.pie = new Chart($("pieChart"), {
+        type: "pie",
+        data: {
+          labels: grouped.map(item => item.label),
+          datasets: [{ label: "Rows", data: grouped.map(item => item.count) }]
+        },
+        options: { responsive: true, maintainAspectRatio: false }
+      });
+
+      destroyChart("line");
+      charts.line = new Chart($("lineChart"), {
+        type: "line",
+        data: {
+          labels: trend.map(item => item.date),
+          datasets: [{ label: `Total ${numericCol}`, data: trend.map(item => item.total), tension: 0.25 }]
+        },
+        options: { responsive: true, maintainAspectRatio: false }
+      });
+
+      renderTable();
+    }
+
+    function renderTable() {
+      const preview = rows.slice(0, 50);
+      const html = [
+        "<table>",
+        "<thead><tr>" + columns.map(col => `<th>${escapeHtml(col)}</th>`).join("") + "</tr></thead>",
+        "<tbody>",
+        ...preview.map(row => "<tr>" + columns.map(col => `<td>${escapeHtml(row[col])}</td>`).join("") + "</tr>"),
+        "</tbody></table>"
+      ].join("");
+      $("tableWrap").innerHTML = html;
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    async function loadSheet() {
+      showNotice("");
+      const response = await fetch(SHEET_URL);
+      if (!response.ok) throw new Error(`Google Sheet request failed: ${response.status}`);
+      const text = await response.text();
+      const parsed = parseGoogleVisualization(text);
+      columns = parsed.cols;
+      rows = parsed.data;
+      if (!rows.length) throw new Error("The sheet loaded, but no rows were found.");
+      populateSelects();
+      renderDashboard();
+    }
+
+    $("refreshBtn").addEventListener("click", loadSheet);
+    ["categorySelect", "numericSelect", "dateSelect"].forEach(id => {
+      $(id).addEventListener("change", renderDashboard);
+    });
+
+    loadSheet().catch(error => {
+      console.error(error);
+      showNotice(
+        "Could not load the Google Sheet. Make sure it is shared as “Anyone with the link can view” or published to the web, then refresh this page."
+      );
+    });
+  </script>
+</body>
+</html>
